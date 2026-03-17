@@ -1,59 +1,92 @@
 let users = [];
 let id = 1;
 
-function parseBody(req) {
-  return new Promise(resolve => {
-
-    let body = "";
-
-    req.on("data", chunk => {
-      body += chunk;
-    });
-
-    req.on("end", () => {
-      resolve(JSON.parse(body || "{}"));
-    });
-
-  });
-}
-
-exports.register = async (req, res) => {
-
-  const { email, password } = await parseBody(req);
-
-  if (!email || !password) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({ error: "Email and password required" }));
-  }
-
-  const exists = users.find(u => u.email === email);
-
-  if (exists) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({ error: "User already exists" }));
-  }
-
-  const user = { id: id++, email, password };
-  users.push(user);
-
-  res.writeHead(201, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(user));
+// helper para responder JSON
+const sendJSON = (res, statusCode, data) => {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
 };
 
-exports.login = async (req, res) => {
+// helper para parsear body sin romper
+const parseBody = (req, callback) => {
+  let body = "";
 
-  const { email, password } = await parseBody(req);
+  req.on("data", chunk => {
+    body += chunk;
+  });
 
-  const user = users.find(u => u.email === email);
+  req.on("end", () => {
+    try {
+      const parsed = body ? JSON.parse(body) : {};
+      callback(parsed);
+    } catch (e) {
+      callback(null);
+    }
+  });
+};
 
-  if (!user || user.password !== password) {
-    res.writeHead(401);
-    return res.end(JSON.stringify({ error: "Invalid credentials" }));
+// REGISTER
+exports.register = (req, res) => {
+
+  parseBody(req, ({ email, password } = {}) => {
+
+    if (!email || !password) {
+      return sendJSON(res, 400, { error: "Email and password required" });
+    }
+
+    const existingUser = users.find(u => u.email === email);
+
+    if (existingUser) {
+      return sendJSON(res, 400, { error: "User already exists" });
+    }
+
+    const user = { id: id++, email, password, token: null };
+    users.push(user);
+
+    return sendJSON(res, 201, user);
+  });
+};
+
+// LOGIN
+exports.login = (req, res) => {
+
+  parseBody(req, ({ email, password } = {}) => {
+
+    const user = users.find(u => u.email === email);
+
+    if (!user || user.password !== password) {
+      return sendJSON(res, 401, { error: "Invalid credentials" });
+    }
+
+    const token = "token-" + user.id;
+    user.token = token;
+
+    return sendJSON(res, 200, {
+      message: "Login successful",
+      token
+    });
+  });
+};
+
+// PROFILE
+exports.profile = (req, res) => {
+  const auth = req.headers.authorization;
+
+  if (!auth) {
+    return sendJSON(res, 401, { error: "Token required" });
   }
 
-  res.writeHead(200);
-  res.end(JSON.stringify({
-    message: "Login successful",
-    userId: user.id
-  }));
+  const token = auth.split(" ")[1];
+
+  const user = users.find(u => u.token === token);
+
+  if (!user) {
+    return sendJSON(res, 401, { error: "Invalid token" });
+  }
+
+  return sendJSON(res, 200, {
+    message: "Profile data",
+    userId: user.id,
+    email: user.email
+  });
 };

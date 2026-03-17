@@ -1,4 +1,4 @@
-const { register, login } = require("../controllers/authController");
+const { register, login, profile } = require("../controllers/authController");
 
 function router(req, res) {
 
@@ -9,6 +9,10 @@ function router(req, res) {
   if (req.method === "POST" && req.url === "/login") {
     return login(req, res);
   }
+
+  if (req.method === "GET" && req.url === "/profile") {
+  return profile(req, res);
+}
 
   res.writeHead(404);
   res.end(JSON.stringify({ error: "Route not found" }));
